@@ -1,0 +1,605 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum ProjectStatus {
+  BACKLOG
+  PLANNED
+  IN_DEVELOPMENT
+  CODE_REVIEW
+  QA
+  READY_FOR_PROD
+  DEPLOYED
+  MONITORING
+  CLIENT_DELIVERY
+  COMPLETE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  VIEWED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum ContractStatus {
+  DRAFT
+  SENT
+  SIGNED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  VIEWED
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CREDIT_CARD
+  PAYPAL
+  STRIPE
+  CHECK
+  CASH
+  OTHER
+}
+
+enum BillingType {
+  HOURLY
+  FIXED
+  RETAINER
+  MILESTONE
+}
+
+enum AutomationTrigger {
+  STATUS_CHANGED
+  DUE_DATE_APPROACHING
+  PAYMENT_OVERDUE
+  PROJECT_CREATED
+  TIME_LOGGED
+  INVOICE_SENT
+}
+
+enum AutomationAction {
+  SEND_EMAIL
+  CHANGE_STATUS
+  CREATE_TASK
+  SEND_NOTIFICATION
+  UPDATE_FIELD
+}
+
+// ============================================
+// CLIENT / CRM
+// ============================================
+
+model Client {
+  id              String    @id @default(cuid())
+  name            String
+  email           String?
+  phone           String?
+  company         String?
+  website         String?
+  address         String?   @db.Text
+  notes           String?   @db.Text
+
+  // Billing defaults
+  defaultBillingType  BillingType @default(HOURLY)
+  defaultHourlyRate   Decimal?    @db.Decimal(10, 2)
+  paymentTermsDays    Int         @default(30)
+
+  // Status
+  isActive        Boolean   @default(true)
+
+  // Relations
+  projects        Project[]
+  proposals       Proposal[]
+  contracts       Contract[]
+  invoices        Invoice[]
+  contacts        ClientContact[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([name])
+  @@index([isActive])
+}
+
+model ClientContact {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  name      String
+  email     String?
+  phone     String?
+  role      String?  // "Decision Maker", "Technical Contact", etc.
+  isPrimary Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+}
+
+// ============================================
+// PROJECT
+// ============================================
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  status      ProjectStatus @default(BACKLOG)
+
+  // Initial prompts and requirements
+  initialPrompt String?      @db.Text
+  requirements  String?      @db.Text
+
+  // Billing
+  billingType       BillingType @default(HOURLY)
+  hourlyRate        Decimal?    @db.Decimal(10, 2)
+
+  // Estimates
+  estimatedHours    Int?
+  estimatedBudget   Decimal?  @db.Decimal(10, 2)
+  actualHours       Int?
+  actualCost        Decimal?  @db.Decimal(10, 2)
+
+  // Payment tracking
+  quoteAmount       Decimal?  @db.Decimal(10, 2)
+  paidAmount        Decimal?  @db.Decimal(10, 2)
+  paymentDate       DateTime?
+
+  // Project details - clientName kept for backward compat
+  clientName        String?
+  projectUrl        String?
+  repositoryUrl     String?
+  deploymentUrl     String?
+
+  // Metadata
+  startDate         DateTime?
+  completionDate    DateTime?
+  dueDate           DateTime?
+
+  // CRM Features
+  nextActionSteps   String?   @db.Text
+  priority          Priority  @default(MEDIUM)
+
+  // On Hold tracking
+  isOnHold          Boolean   @default(false)
+  holdReason        String?   @db.Text
+  holdStartDate     DateTime?
+  totalHoldDays     Int       @default(0)
+
+  // Order for Kanban board
+  order             Int       @default(0)
+
+  // Relations
+  clientId          String?
+  client            Client?   @relation(fields: [clientId], references: [id])
+
+  notes             Note[]
+  statusHistory     StatusHistory[]
+  tags              ProjectTag[]
+  activityLogs      ActivityLog[]
+  timeEntries       TimeEntry[]
+  invoices          Invoice[]
+  milestones        Milestone[]
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status, order])
+  @@index([priority])
+  @@index([isOnHold])
+  @@index([clientId])
+  @@index([dueDate])
+}
+
+model Milestone {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  amount      Decimal?  @db.Decimal(10, 2)
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  order       Int       @default(0)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([projectId])
+}
+
+// ============================================
+// TIME TRACKING
+// ============================================
+
+model TimeEntry {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  description String?
+  startTime   DateTime
+  endTime     DateTime?
+  duration    Int?     // Duration in minutes (calculated or manual)
+
+  // For billing
+  isBillable  Boolean  @default(true)
+  hourlyRate  Decimal? @db.Decimal(10, 2)
+  invoiceId   String?
+  invoice     Invoice? @relation(fields: [invoiceId], references: [id])
+
+  // Timer state
+  isRunning   Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([startTime])
+  @@index([invoiceId])
+  @@index([isRunning])
+}
+
+// ============================================
+// PROPOSALS
+// ============================================
+
+model Proposal {
+  id          String         @id @default(cuid())
+  clientId    String
+  client      Client         @relation(fields: [clientId], references: [id])
+
+  title       String
+  description String?        @db.Text
+  status      ProposalStatus @default(DRAFT)
+
+  // Content
+  scope       String?        @db.Text
+  deliverables String?       @db.Text
+  timeline    String?        @db.Text
+  terms       String?        @db.Text
+
+  // Pricing
+  amount      Decimal        @db.Decimal(10, 2)
+  billingType BillingType    @default(FIXED)
+
+  // Dates
+  validUntil  DateTime?
+  sentAt      DateTime?
+  viewedAt    DateTime?
+  acceptedAt  DateTime?
+  rejectedAt  DateTime?
+
+  // Signature
+  signatureData String?      @db.Text
+  signedBy      String?
+  signedAt      DateTime?
+
+  // Unique link for client viewing
+  viewToken   String         @unique @default(cuid())
+
+  items       ProposalItem[]
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([clientId])
+  @@index([status])
+}
+
+model ProposalItem {
+  id          String   @id @default(cuid())
+  proposalId  String
+  proposal    Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  amount      Decimal  @db.Decimal(10, 2)
+
+  order       Int      @default(0)
+
+  createdAt   DateTime @default(now())
+
+  @@index([proposalId])
+}
+
+// ============================================
+// CONTRACTS
+// ============================================
+
+model Contract {
+  id          String         @id @default(cuid())
+  clientId    String
+  client      Client         @relation(fields: [clientId], references: [id])
+
+  title       String
+  type        String?        // "NDA", "Service Agreement", "SOW", etc.
+  status      ContractStatus @default(DRAFT)
+
+  // Content
+  content     String         @db.Text
+
+  // Dates
+  startDate   DateTime?
+  endDate     DateTime?
+  sentAt      DateTime?
+  signedAt    DateTime?
+
+  // Signature
+  signatureData String?      @db.Text
+  signedBy      String?
+
+  // Unique link for client viewing/signing
+  viewToken   String         @unique @default(cuid())
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([clientId])
+  @@index([status])
+}
+
+// ============================================
+// INVOICING
+// ============================================
+
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+
+  clientId      String
+  client        Client        @relation(fields: [clientId], references: [id])
+  projectId     String?
+  project       Project?      @relation(fields: [projectId], references: [id])
+
+  status        InvoiceStatus @default(DRAFT)
+
+  // Amounts
+  subtotal      Decimal       @db.Decimal(10, 2)
+  taxRate       Decimal?      @db.Decimal(5, 2)
+  taxAmount     Decimal?      @db.Decimal(10, 2)
+  discount      Decimal?      @db.Decimal(10, 2)
+  total         Decimal       @db.Decimal(10, 2)
+
+  // Dates
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime
+  sentAt        DateTime?
+  viewedAt      DateTime?
+  paidAt        DateTime?
+
+  // Payment
+  paymentMethod PaymentMethod?
+  paymentNotes  String?
+
+  // Notes
+  notes         String?       @db.Text
+  terms         String?       @db.Text
+
+  // Unique link for client viewing
+  viewToken     String        @unique @default(cuid())
+
+  items         InvoiceItem[]
+  timeEntries   TimeEntry[]
+  payments      Payment[]
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([clientId])
+  @@index([projectId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  description String
+  quantity    Decimal  @db.Decimal(10, 2)
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  amount      Decimal  @db.Decimal(10, 2)
+
+  order       Int      @default(0)
+
+  createdAt   DateTime @default(now())
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  amount      Decimal       @db.Decimal(10, 2)
+  method      PaymentMethod
+  reference   String?       // Transaction ID, check number, etc.
+  notes       String?
+
+  paidAt      DateTime      @default(now())
+
+  createdAt   DateTime      @default(now())
+
+  @@index([invoiceId])
+}
+
+// ============================================
+// AUTOMATION / WORKFLOWS
+// ============================================
+
+model Automation {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean           @default(true)
+
+  trigger     AutomationTrigger
+  triggerConfig String?         @db.Text // JSON config for trigger conditions
+
+  action      AutomationAction
+  actionConfig  String?         @db.Text // JSON config for action details
+
+  // Execution tracking
+  lastRunAt   DateTime?
+  runCount    Int               @default(0)
+
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  logs        AutomationLog[]
+
+  @@index([isActive])
+  @@index([trigger])
+}
+
+model AutomationLog {
+  id            String     @id @default(cuid())
+  automationId  String
+  automation    Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  success       Boolean
+  message       String?
+  metadata      String?    @db.Text
+
+  executedAt    DateTime   @default(now())
+
+  @@index([automationId])
+  @@index([executedAt])
+}
+
+// ============================================
+// TAGS & ORGANIZATION
+// ============================================
+
+model Tag {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  color     String       @default("#6366f1")
+
+  projects  ProjectTag[]
+
+  createdAt DateTime     @default(now())
+}
+
+model ProjectTag {
+  projectId String
+  tagId     String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, tagId])
+  @@index([projectId])
+  @@index([tagId])
+}
+
+// ============================================
+// ACTIVITY & HISTORY
+// ============================================
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  action      String
+  description String
+  metadata    String?  @db.Text
+
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@index([createdAt])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+model StatusHistory {
+  id            String        @id @default(cuid())
+  projectId     String
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  fromStatus    ProjectStatus?
+  toStatus      ProjectStatus
+  changedBy     String?
+  notes         String?       @db.Text
+
+  createdAt     DateTime      @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([projectId])
+}
+
+// ============================================
+// SETTINGS
+// ============================================
+
+model Settings {
+  id              String  @id @default("default")
+
+  // Business info
+  businessName    String?
+  businessEmail   String?
+  businessPhone   String?
+  businessAddress String? @db.Text
+  businessLogo    String?
+
+  // Invoice settings
+  invoicePrefix   String  @default("INV-")
+  nextInvoiceNum  Int     @default(1001)
+  defaultTaxRate  Decimal? @db.Decimal(5, 2)
+  defaultTerms    String? @db.Text
+
+  // Payment settings
+  paymentInstructions String? @db.Text
+
+  // Theme
+  theme           String  @default("light")
+  accentColor     String  @default("#6366f1")
+
+  updatedAt       DateTime @updatedAt
+}
