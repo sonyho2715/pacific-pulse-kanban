@@ -79,13 +79,20 @@ export function ProjectCard({ project, isDragging = false }: ProjectCardProps) {
     <div
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
-      className={`group bg-white rounded-2xl border shadow-card hover:shadow-card-hover cursor-grab active:cursor-grabbing transition-all duration-300 ${
+      className={`group bg-white rounded-2xl border shadow-card hover:shadow-card-hover transition-all duration-300 ${
         isDragging ? 'opacity-60 shadow-xl' : 'hover:-translate-y-1'
       } ${project.isOnHold ? 'border-amber-300 bg-amber-50/30' : 'border-slate-200/60'}`}
     >
-      <Link href={`/projects/${project.id}`} className="block p-5">
+      <div className="p-5">
+        {/* Drag Handle - invisible overlay for dragging */}
+        <div
+          {...listeners}
+          {...attributes}
+          className="absolute inset-0 cursor-grab active:cursor-grabbing z-0"
+          style={{ pointerEvents: showMenu ? 'none' : 'auto' }}
+        />
+
+        <Link href={`/projects/${project.id}`} className="block relative z-10">
         {/* On Hold Banner */}
         {project.isOnHold && (
           <div className="flex items-center gap-2 text-amber-700 bg-amber-100 -mx-5 -mt-5 mb-4 px-5 py-2 rounded-t-2xl border-b border-amber-200">
@@ -96,34 +103,33 @@ export function ProjectCard({ project, isDragging = false }: ProjectCardProps) {
 
         {/* Priority Badge & Days Indicator Row */}
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-1.5">
-            {/* Priority */}
-            <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-medium ${priorityConfig.bgColor} ${priorityConfig.color}`}>
-              <span>{priorityConfig.icon}</span>
+          <div className="flex items-center gap-1">
+            {/* Priority - title only, no icon */}
+            <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium uppercase ${priorityConfig.bgColor} ${priorityConfig.color}`}>
               {priorityConfig.label}
             </span>
 
             {/* Days in Stage - only show for active projects */}
             {isActive && !project.isOnHold && (
-              <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded border font-medium ${daysColors.bg} ${daysColors.text} ${daysColors.border}`}>
-                {showDaysAlert && <AlertTriangle className="w-2.5 h-2.5" />}
+              <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${daysColors.bg} ${daysColors.text} ${daysColors.border}`}>
                 {daysInStage}d
               </span>
             )}
           </div>
 
           {/* Options Button */}
-          <div className="relative" ref={menuRef}>
+          <div className="relative z-20" ref={menuRef}>
             <button
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 setShowMenu(!showMenu);
               }}
-              className="inline-flex items-center justify-center w-6 h-6 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+              className="inline-flex items-center justify-center w-5 h-5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
               title="Options"
+              type="button"
             >
-              <MoreVertical className="w-4 h-4" />
+              <MoreVertical className="w-3.5 h-3.5" />
             </button>
 
             {/* Dropdown Menu */}
@@ -193,11 +199,11 @@ export function ProjectCard({ project, isDragging = false }: ProjectCardProps) {
 
         {/* Tags */}
         {project.tags && project.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
+          <div className="flex flex-wrap gap-1 mb-3">
             {project.tags.slice(0, 3).map(({ tag }) => (
               <span
                 key={tag.id}
-                className="inline-flex items-center text-xs px-2 py-0.5 rounded-md font-medium"
+                className="text-[9px] px-1.5 py-0.5 rounded font-medium"
                 style={{
                   backgroundColor: `${tag.color}15`,
                   color: tag.color,
@@ -208,31 +214,29 @@ export function ProjectCard({ project, isDragging = false }: ProjectCardProps) {
               </span>
             ))}
             {project.tags.length > 3 && (
-              <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-md font-medium bg-slate-100 text-slate-500">
+              <span className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-slate-100 text-slate-500">
                 +{project.tags.length - 3}
               </span>
             )}
           </div>
         )}
 
-        {/* Badges */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
+        {/* Badges - titles only, no icons */}
+        <div className="flex flex-wrap gap-1 mb-4">
           {(project.client?.name || project.clientName) && (
-            <span className="inline-flex items-center text-[11px] bg-purple-50 text-purple-700 border border-purple-200/60 px-2 py-1 rounded-md font-medium">
+            <span className="text-[9px] bg-purple-50 text-purple-700 border border-purple-200/60 px-1.5 py-0.5 rounded font-medium">
               {project.client?.name || project.clientName}
             </span>
           )}
 
           {project.estimatedHours && (
-            <span className="inline-flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 border border-blue-200/60 px-2 py-1 rounded-md font-medium">
-              <Clock className="w-3 h-3" />
+            <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200/60 px-1.5 py-0.5 rounded font-medium">
               {project.estimatedHours}h
             </span>
           )}
 
           {project.estimatedBudget && (
-            <span className="inline-flex items-center gap-1 text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-2 py-1 rounded-md font-medium">
-              <DollarSign className="w-3 h-3" />
+            <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-1.5 py-0.5 rounded font-medium">
               {new Intl.NumberFormat('en-US', {
                 style: 'currency',
                 currency: 'USD',
@@ -282,7 +286,8 @@ export function ProjectCard({ project, isDragging = false }: ProjectCardProps) {
             </div>
           )}
         </div>
-      </Link>
+        </Link>
+      </div>
     </div>
   );
 }
