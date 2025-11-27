@@ -178,6 +178,17 @@ async function main() {
         isActive: true,
       },
     }),
+    prisma.client.upsert({
+      where: { id: 'client-kailua-nail-care' },
+      update: {},
+      create: {
+        id: 'client-kailua-nail-care',
+        name: 'Kailua Nail Care',
+        company: 'Kailua Nail Care',
+        defaultBillingType: BillingType.FIXED,
+        isActive: true,
+      },
+    }),
   ]);
 
   console.log(`Created ${clients.length} clients`);
@@ -548,6 +559,21 @@ async function main() {
       billingType: BillingType.HOURLY,
       priority: Priority.LOW,
       initialPrompt: 'Create onboarding platform.',
+    },
+    {
+      id: 'proj-kailua-nail-care',
+      name: 'Kailua Nail Care',
+      description: 'Modern nail salon website with booking system, service catalog, online scheduling, and client management.',
+      status: ProjectStatus.IN_DEVELOPMENT,
+      clientId: 'client-kailua-nail-care',
+      clientName: 'Kailua Nail Care',
+      repositoryUrl: 'https://github.com/sonyho2715/kailua-nail-care',
+      deploymentUrl: 'https://kailua-nail-care.vercel.app',
+      billingType: BillingType.FIXED,
+      priority: Priority.HIGH,
+      estimatedHours: 40,
+      estimatedBudget: 3500,
+      initialPrompt: 'Build a modern nail salon website with online booking system, service catalog, and professional design.',
     },
   ];
 
